@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FileFind</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+  <aside class="sidebar">
+    <div class="brand"><img src="logo.jpg" class="brand-mark-img" alt="Logo"><span>FileFind</span></div>
+    <p class="sidebar-label">Workspace</p>
+    <button class="nav active" data-view="dashboard"><span>01</span> Overview</button>
+    <button class="nav" data-view="upload"><span>02</span> Upload files</button>
+    <button class="nav" data-view="files"><span>03</span> My files</button>
+    <button class="nav" data-view="search"><span>04</span> Search</button>
+    <button class="nav" data-view="compare"><span>05</span> Compare</button>
+    <button class="nav" data-view="settings"><span>06</span> Settings</button>
+    <button class="nav" data-view="trash"><span>07</span> Recycle bin</button>
+    <div class="sidebar-note"><strong>Local workspace</strong><span>Files stay on this machine.</span></div>
+
+  </aside>
+
+  <main class="app">
+    <section id="auth" class="view">
+      <div class="auth-split">
+        <div class="auth-branding">
+          <img src="logo.jpg" alt="File Find Logo" class="auth-logo">
+          <div class="eyebrow">FILEFIND / DOCUMENT INDEX</div>
+          <h1>Find the needle.</h1>
+          <p>Upload once. Search every filename and every extracted word from one quiet workspace.</p>
+        </div>
+        <div class="auth-form-side">
+          <div class="auth-card">
+            <span class="welcome-kicker">FILEFIND / PRIVATE ACCESS</span>
+            <h2>Login to your resources</h2>
+            <form id="loginForm" class="auth-form">
+              <label>Email<input id="loginEmail" type="email" placeholder="you@gmail.com" autocomplete="email" required></label>
+              <label>Password<input id="loginPassword" type="password" placeholder="Your password" autocomplete="current-password" required></label>
+              <button type="submit">Login</button>
+              <button id="gotoRegisterBtn" type="button" class="secondary">Registration</button>
+            </form>
+            <div id="loginError" class="auth-error"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="register" class="view">
+      <div class="auth-split">
+        <div class="auth-branding">
+          <img src="logo.jpg" alt="File Find Logo" class="auth-logo">
+          <div class="eyebrow">FILEFIND / DOCUMENT INDEX</div>
+          <h1>Find the needle.</h1>
+          <p>Upload once. Search every filename and every extracted word from one quiet workspace.</p>
+        </div>
+        <div class="auth-form-side">
+          <div class="auth-card">
+            <span class="welcome-kicker">NEW HERE</span>
+            <h2>Create account</h2>
+            <form id="signupForm" class="auth-form">
+              <label>Email<input id="signupEmail" type="email" placeholder="you@gmail.com" autocomplete="email" required></label>
+              <label>Set password<input id="signupPassword" type="password" placeholder="Min 6 characters" autocomplete="new-password" required></label>
+              <label>Confirm password<input id="signupConfirm" type="password" placeholder="Repeat password" autocomplete="new-password" required></label>
+              <button type="submit">Sign up</button>
+              <button id="backToLoginBtn" type="button" class="secondary">Back to login</button>
+            </form>
+            <div id="signupError" class="auth-error"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <header class="topbar">
+      <button id="topLoginBtn" class="top-login-btn" type="button">Login</button>
+      <div>
+        <div class="eyebrow">FILEFIND / DOCUMENT INDEX</div>
+        <h1>Find the needle.</h1>
+        <p>Upload once. Search every filename and every extracted word from one quiet workspace.</p>
+      </div>
+      <form id="quickSearch" class="quick-search">
+        <input id="quickQuery" placeholder="Enter word, phrase or pattern..." autocomplete="off">
+        <button type="submit">Find</button>
+      </form>
+      <div id="connectionStatus" class="connection pending">Connecting to local index...</div>
+    </header>
+
+    <section id="dashboard" class="view active">
+      <div class="welcome-panel">
+        <div class="welcome-copy">
+          <span class="welcome-kicker">YOUR PRIVATE DESKTOP INDEX</span>
+          <h2>Everything you need,<br><em>right where you left it.</em></h2>
+          <p>Bring in a folder, find the exact sentence, and open the source file in seconds.</p>
+          <div class="welcome-actions">
+            <button id="welcomeUpload" type="button">Start adding files <span>-&gt;</span></button>
+            <button id="welcomeSearch" class="ghost-button" type="button">Search the index</button>
+          </div>
+        </div>
+        <div class="welcome-art" aria-hidden="true">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="folder-shape"><span></span></div>
+          <div class="spark spark-one">*</div>
+          <div class="spark spark-two">+</div>
+        </div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric metric-main"><span>Total Files</span><strong id="statFiles">0</strong><small>ready to search</small></div>
+        <div class="metric"><span>PDF Files</span><strong id="statPdf">0</strong></div>
+        <div class="metric"><span>DOCX Files</span><strong id="statDocx">0</strong></div>
+        <div class="metric"><span>PPTX Files</span><strong id="statPptx">0</strong></div>
+        <div class="metric"><span>Total Searches</span><strong id="statSearches">0</strong></div>
+        <div class="metric metric-accent"><span>Total Matches</span><strong id="statMatches">0</strong><small>found across files</small></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Recent Searches</h2>
+          <span id="statWords">0 extracted words</span>
+        </div>
+        <div id="recentSearches" class="chips"></div>
+      </div>
+    </section>
+
+    <section id="upload" class="view">
+      <div id="dropZone" class="drop-zone">
+        <input id="fileInput" type="file" accept=".pdf,.docx,.pptx,.txt,.csv,.md,.json,.log,.rtf,.jpg,.jpeg,.png,.gif,.bmp,.webp" multiple hidden>
+        <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
+        <span class="drop-kicker">ADD TO YOUR INDEX</span>
+        <h2>Drop documents here</h2>
+        <p>PDF, DOCX, PPTX, and TXT files are extracted locally and ready to search.</p>
+        <div class="upload-actions">
+          <button id="browseBtn" type="button">Choose files</button>
+          <button id="folderBtn" class="secondary" type="button">Choose folder</button>
+        </div>
+        <span class="drop-hint">Windows will ask you to choose what FileFind may access.</span>
+        <div id="uploadProgress" class="progress"><span></span></div>
+      </div>
+      <div id="uploadMessages" class="messages"></div>
+      <div id="uploadedPreview" class="uploaded-preview"></div>
+    </section>
+
+    <section id="files" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Uploaded Files</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>File Name</th><th>Folder</th><th>Tags</th><th>Type</th><th>Size</th><th>Status</th><th>Words</th><th>Uploaded</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="fileRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="search" class="view">
+      <form id="searchForm" class="search-panel">
+        <input id="query" placeholder="database, machine learning, data*, data[a-z]+" autocomplete="off">
+        <div class="source-picker">
+          <span>Search in</span>
+          <label><input type="radio" name="searchSource" value="uploaded" checked> Uploaded files</label>
+          <label><input type="radio" name="searchSource" value="local"> Selected local files</label>
+        </div>
+        <div class="controls">
+          <label>Algorithm<select id="algorithm">
+            <option value="kmp">KMP</option>
+            <option value="naive">Naive Search</option>
+            <option value="rabin-karp">Rabin-Karp</option>
+            <option value="boyer-moore">Boyer-Moore</option>
+            <option value="regex">Regular Expression</option>
+          </select></label>
+          <label>Mode<select id="mode">
+            <option value="simple">Simple</option>
+            <option value="phrase">Phrase</option>
+            <option value="pattern">Pattern</option>
+            <option value="regex">Regex</option>
+          </select></label>
+          <label class="check"><input id="caseSensitive" type="checkbox"> Case sensitive</label>
+        </div>
+        <div class="filters">
+          <label><input type="checkbox" class="typeFilter" value="pdf" checked> PDF</label>
+          <label><input type="checkbox" class="typeFilter" value="docx" checked> DOCX</label>
+          <label><input type="checkbox" class="typeFilter" value="pptx" checked> PPTX</label>
+          <label><input type="checkbox" class="typeFilter" value="txt" checked> TXT</label>
+          <label><input type="checkbox" class="typeFilter" value="csv" checked> CSV</label>
+          <label><input type="checkbox" class="typeFilter" value="md" checked> MD</label>
+          <label><input type="checkbox" class="typeFilter" value="json" checked> JSON</label>
+          <label><input type="checkbox" class="typeFilter" value="log" checked> LOG</label>
+          <label><input type="checkbox" class="typeFilter" value="rtf" checked> RTF</label>
+          <label><input type="checkbox" class="typeFilter" value="jpg" checked> JPG</label>
+          <label><input type="checkbox" class="typeFilter" value="jpeg" checked> JPEG</label>
+          <label><input type="checkbox" class="typeFilter" value="png" checked> PNG</label>
+          <label><input type="checkbox" class="typeFilter" value="gif" checked> GIF</label>
+          <label><input type="checkbox" class="typeFilter" value="bmp" checked> BMP</label>
+          <label><input type="checkbox" class="typeFilter" value="webp" checked> WEBP</label>
+        </div>
+        <button type="submit">Search</button>
+      </form>
+      <div id="searchSummary" class="summary"></div>
+      <div id="results" class="results"></div>
+    </section>
+
+    <section id="compare" class="view">
+      <form id="compareForm" class="search-panel">
+        <input id="compareQuery" placeholder="Search query for algorithm comparison" autocomplete="off">
+        <button type="submit">Compare</button>
+      </form>
+      <div id="chart" class="chart"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Algorithm</th><th>Matches</th><th>Execution Time</th></tr></thead>
+          <tbody id="comparisonRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="panel settings">
+        <h2>Settings</h2>
+        <div class="sidebar-user" id="sidebarUser" hidden>
+          <span id="userEmailLabel"></span>
+          <button id="logoutBtn" class="secondary small" type="button">Logout</button>
+        </div>
+        <button id="exportFiles" class="secondary" type="button">Export file list</button>
+        <label class="check"><input id="defaultCase" type="checkbox"> Default to case-sensitive search</label>
+        <label>Upload limit<input value="5 GB" disabled></label>
+        <label>Supported formats<input value="PDF, DOCX, PPTX, TXT, CSV, MD, JSON, LOG, RTF, JPG, JPEG, PNG, GIF, BMP, WEBP" disabled></label>
+      </div>
+    </section>
+
+    <section id="trash" class="view">
+      <div class="panel">
+        <div class="panel-head"><h2>Recycle bin</h2><button id="refreshTrash" class="secondary" type="button">Refresh</button></div>
+        <div id="trashRows" class="uploaded-preview"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle light theme">Light theme</button>
+  <script src="script.js"></script>
+</body>
+</html>

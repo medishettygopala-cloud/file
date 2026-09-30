@@ -1,0 +1,4 @@
+Database normalization reduces duplicate data and improves consistency.
+Machine learning algorithms often rely on datasets.
+The Knuth-Morris-Pratt algorithm searches text using a prefix table.
+Rabin-Karp uses hashing for pattern matching.

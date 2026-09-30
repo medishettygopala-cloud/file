@@ -1,0 +1,8 @@
+build/
+uploads/*
+extracted_text/*
+data/*
+!uploads/.gitkeep
+!extracted_text/.gitkeep
+!data/.gitkeep
+workspaces/
