@@ -62,10 +62,12 @@ struct UploadPart {
 };
 
 static fs::path root = fs::current_path();
+static fs::path storageRoot;
 static fs::path uploadDir;
 static fs::path extractedDir;
 static fs::path dataDir;
 static std::string workspaceId = "default";
+static std::string activeUserId;
 static std::vector<FileInfo> files;
 static std::vector<std::string> recentSearches;
 static int totalSearches = 0;
@@ -170,8 +172,8 @@ std::string hashPassword(const std::string& salt, const std::string& password) {
     return sha256impl::hashHex(salt + ":" + password);
 }
 
-fs::path authDbPath() { return root / "data" / "users.db"; }
-fs::path sessionDbPath() { return root / "data" / "sessions.db"; }
+fs::path authDbPath() { return storageRoot / "users.db"; }
+fs::path sessionDbPath() { return storageRoot / "sessions.db"; }
 
 void loadUsers() {
     users.clear();
@@ -189,7 +191,7 @@ void loadUsers() {
 }
 
 void saveUsers() {
-    fs::create_directories(root / "data");
+    fs::create_directories(storageRoot);
     std::ofstream out(authDbPath(), std::ios::binary | std::ios::trunc);
     for (const auto& u : users) out << u.id << '\t' << u.email << '\t' << u.salt << '\t' << u.hash << '\t' << u.createdAt << '\n';
 }
@@ -207,7 +209,7 @@ void loadSessions() {
 }
 
 void saveSessions() {
-    fs::create_directories(root / "data");
+    fs::create_directories(storageRoot);
     std::ofstream out(sessionDbPath(), std::ios::binary | std::ios::trunc);
     for (const auto& [tok, uid] : sessions) out << tok << '\t' << uid << '\n';
 }
@@ -314,6 +316,92 @@ bool validWorkspaceId(const std::string& value) {
     });
 }
 
+std::string safeUserDirectoryId(const std::string& userId) {
+    if (userId.empty() || userId.size() > 64) return {};
+    if (!std::all_of(userId.begin(), userId.end(), [](unsigned char c) { return std::isalnum(c); })) return {};
+    std::string result = userId;
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return result;
+}
+
+bool isSafeFileId(const std::string& fileId) {
+    return !fileId.empty() && fileId.size() <= 64 &&
+        std::all_of(fileId.begin(), fileId.end(), [](unsigned char c) { return std::isxdigit(c); });
+}
+
+bool isSafeStoredName(const std::string& name) {
+    if (name.empty() || name == "." || name == ".." || name.find('\0') != std::string::npos ||
+        name.find_first_of("/\\:") != std::string::npos) return false;
+    fs::path path(name);
+    return !path.is_absolute() && path.filename() == path;
+}
+
+bool isWithinDirectory(const fs::path& directory, const fs::path& candidate) {
+    std::error_code error;
+    fs::path canonicalDirectory = fs::weakly_canonical(directory, error);
+    if (error) return false;
+    fs::path canonicalCandidate = fs::weakly_canonical(candidate, error);
+    if (error) return false;
+    auto directoryPart = canonicalDirectory.begin();
+    auto candidatePart = canonicalCandidate.begin();
+    for (; directoryPart != canonicalDirectory.end(); ++directoryPart, ++candidatePart) {
+        if (candidatePart == canonicalCandidate.end() || *directoryPart != *candidatePart) return false;
+    }
+    return candidatePart != canonicalCandidate.end();
+}
+
+bool resolveSafeChildPath(const fs::path& directory, const std::string& name, fs::path& result) {
+    if (!isSafeStoredName(name)) return false;
+    fs::path candidate = directory / name;
+    if (!isWithinDirectory(directory, candidate)) return false;
+    result = std::move(candidate);
+    return true;
+}
+
+void copyLegacyFileIfMissing(const fs::path& source, const fs::path& destination) {
+    std::error_code error;
+    if (!fs::is_regular_file(source, error) || fs::exists(destination, error)) return;
+    fs::create_directories(destination.parent_path(), error);
+    if (error) throw std::runtime_error("Unable to create persistent storage directory");
+    fs::copy_file(source, destination, fs::copy_options::skip_existing, error);
+    if (error) throw std::runtime_error("Unable to migrate existing FileFind data");
+}
+
+void initializeStorage() {
+    const char* configuredPath = std::getenv("FILE_STORAGE_PATH");
+    storageRoot = configuredPath && *configuredPath ? fs::path(configuredPath) : root / "data" / "users";
+    if (storageRoot.is_relative()) storageRoot = root / storageRoot;
+    fs::create_directories(storageRoot);
+    storageRoot = fs::weakly_canonical(storageRoot);
+    copyLegacyFileIfMissing(root / "data" / "users.db", authDbPath());
+    copyLegacyFileIfMissing(root / "data" / "sessions.db", sessionDbPath());
+}
+
+void copyLegacyDirectoryFiles(const fs::path& source, const fs::path& destination) {
+    std::error_code error;
+    if (!fs::is_directory(source, error)) return;
+    fs::create_directories(destination, error);
+    if (error) throw std::runtime_error("Unable to create user storage directory");
+    for (fs::directory_iterator entry(source, error), end; !error && entry != end; entry.increment(error)) {
+        if (entry->is_symlink(error) || error) continue;
+        if (!entry->is_regular_file(error) || error) continue;
+        fs::path target = destination / entry->path().filename();
+        fs::copy_file(entry->path(), target, fs::copy_options::skip_existing, error);
+        if (error) throw std::runtime_error("Unable to migrate existing user files");
+    }
+}
+
+void migrateLegacyWorkspace(const std::string& oldWorkspaceId, const fs::path& userRoot) {
+    fs::path targetDatabase = userRoot / "data" / "files.db";
+    std::error_code error;
+    if (fs::exists(targetDatabase, error)) return;
+    fs::path legacyRoot = root / "workspaces" / oldWorkspaceId;
+    if (!fs::is_regular_file(legacyRoot / "data" / "files.db", error)) return;
+    copyLegacyDirectoryFiles(legacyRoot / "uploads", userRoot / "files");
+    copyLegacyDirectoryFiles(legacyRoot / "extracted_text", userRoot / "extracted_text");
+    copyLegacyFileIfMissing(legacyRoot / "data" / "files.db", targetDatabase);
+}
+
 std::string nowIso() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -357,7 +445,7 @@ std::string extensionOf(const std::string& name) {
 
 std::string safeName(const std::string& original) {
     std::string out;
-    for (char c : fs::path(original).filename().string()) {
+    for (unsigned char c : fs::path(original).filename().string()) {
         if (std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '_' || c == '-') out += c;
         else out += '_';
     }
@@ -365,7 +453,11 @@ std::string safeName(const std::string& original) {
 }
 
 std::string originalFileName(const std::string& name) {
-    std::string filename = fs::path(name).filename().string();
+    size_t separator = name.find_last_of("/\\");
+    std::string filename = name.substr(separator == std::string::npos ? 0 : separator + 1);
+    for (char& value : filename) {
+        if (static_cast<unsigned char>(value) < 32 || value == 127) value = '_';
+    }
     return filename.empty() ? "upload.bin" : filename;
 }
 
@@ -465,12 +557,13 @@ void loadDatabase() {
         std::string col;
         while (std::getline(ss, col, '\t')) cols.push_back(col);
         if (cols.size() < 9) continue;
+        if (!isSafeFileId(cols[0]) || !isSafeStoredName(cols[2])) continue;
         FileInfo f;
         f.id = cols[0]; f.originalName = cols[1]; f.storedName = cols[2]; f.type = cols[3];
         f.size = static_cast<size_t>(std::stoull(cols[4]));
         f.uploadedAt = cols[5]; f.status = cols[6];
         f.wordCount = static_cast<size_t>(std::stoull(cols[7]));
-        f.extractedPath = cols[8];
+        f.extractedPath = (extractedDir / (f.id + ".txt")).string();
         if (cols.size() > 9) f.folder = cols[9];
         if (cols.size() > 10) f.tags = cols[10];
         if (cols.size() > 11) f.fingerprint = cols[11];
@@ -480,26 +573,39 @@ void loadDatabase() {
 }
 
 void selectWorkspace(const Request& req) {
-    if (authUser) {
-        // Per-user storage: each login gets a private workspace so old
-        // users see their own files/resources after login.
-        std::string safe;
-        for (char c : authUser->id) {
-            if (std::isalnum(static_cast<unsigned char>(c))) safe += static_cast<char>(std::tolower(c));
-        }
-        if (safe.size() < 8) safe = "user_default";
-        workspaceId = "u_" + safe.substr(0, 48);
-    } else {
-        auto it = req.headers.find("x-workspace-id");
-        workspaceId = it != req.headers.end() && validWorkspaceId(it->second) ? it->second : "default";
+    if (!authUser) {
+        files.clear();
+        uploadDir.clear();
+        extractedDir.clear();
+        dataDir.clear();
+        return;
     }
-    fs::path workspaceRoot = root / "workspaces" / workspaceId;
-    uploadDir = workspaceRoot / "uploads";
-    extractedDir = workspaceRoot / "extracted_text";
-    dataDir = workspaceRoot / "data";
+    std::string userDirectoryId = safeUserDirectoryId(authUser->id);
+    if (userDirectoryId.empty()) {
+        authUser = nullptr;
+        authToken.clear();
+        files.clear();
+        return;
+    }
+    workspaceId = "u_" + userDirectoryId.substr(0, 48);
+    if (activeUserId != authUser->id) {
+        recentSearches.clear();
+        totalSearches = 0;
+        totalMatches = 0;
+        selectedFolder.clear();
+        selectedFiles.clear();
+        localDocuments.clear();
+        localWarnings.clear();
+        activeUserId = authUser->id;
+    }
+    fs::path userRoot = storageRoot / userDirectoryId;
+    uploadDir = userRoot / "files";
+    extractedDir = userRoot / "extracted_text";
+    dataDir = userRoot / "data";
     fs::create_directories(uploadDir);
     fs::create_directories(extractedDir);
     fs::create_directories(dataDir);
+    migrateLegacyWorkspace(workspaceId, userRoot);
     loadDatabase();
 }
 
@@ -599,6 +705,7 @@ Response apiTrash() {
 }
 
 Response apiRestore(const std::string& id) {
+    if (!isSafeFileId(id)) return {404, "application/json", "{\"error\":\"File not found in recycle bin\"}"};
     for (auto& file : files) {
         if (file.id == id && file.deleted) {
             file.deleted = false;
@@ -807,7 +914,7 @@ Response apiUpload(const Request& req) {
         f.size = part.data.size();
         f.uploadedAt = nowIso();
         f.status = "Processing";
-        f.storedName = f.id + "_" + f.originalName;
+        f.storedName = f.id + "_" + safeName(f.originalName);
         f.fingerprint = fingerprintOf(part.data);
         bool duplicate = false;
         for (const auto& existing : files) {
@@ -820,7 +927,11 @@ Response apiUpload(const Request& req) {
             errors.push_back(part.filename + ": duplicate file already exists");
             continue;
         }
-        fs::path stored = uploadDir / f.storedName;
+        fs::path stored;
+        if (!resolveSafeChildPath(uploadDir, f.storedName, stored)) {
+            errors.push_back(part.filename + ": invalid storage filename");
+            continue;
+        }
         std::error_code directoryError;
         fs::create_directories(uploadDir, directoryError);
         fs::create_directories(extractedDir, directoryError);
@@ -842,8 +953,14 @@ Response apiUpload(const Request& req) {
         }
         std::string text = extractText(stored, type, dataDir / "tmp");
         f.wordCount = countWords(text);
-        f.extractedPath = (extractedDir / (f.id + ".txt")).string();
-        writeTextFile(f.extractedPath, text);
+        fs::path extractedPath;
+        if (!resolveSafeChildPath(extractedDir, f.id + ".txt", extractedPath)) {
+            fs::remove(stored);
+            errors.push_back(part.filename + ": invalid extracted-text path");
+            continue;
+        }
+        f.extractedPath = extractedPath.string();
+        writeTextFile(extractedPath, text);
         f.status = isImageType(type) ? "Indexed (filename only)" : (text.empty() ? "No readable text" : "Processed");
         files.push_back(f);
         uploaded.push_back(fileJson(f));
@@ -860,6 +977,7 @@ Response apiUpload(const Request& req) {
 }
 
 Response apiDelete(const std::string& id) {
+    if (!isSafeFileId(id)) return {404, "application/json", "{\"error\":\"File not found\"}"};
     for (auto it = files.begin(); it != files.end(); ++it) {
         if (it->id == id) {
             it->deleted = true;
@@ -874,6 +992,7 @@ Response apiDelete(const std::string& id) {
 std::string mimeFor(const fs::path& path);
 
 Response apiRename(const std::string& id, const Request& req) {
+    if (!isSafeFileId(id)) return {404, "application/json", "{\"error\":\"File not found\"}"};
     std::string requestedName = originalFileName(getJsonString(req.body, "name"));
     if (requestedName.empty() || requestedName == "." || requestedName == ".." || requestedName.find_first_of("\\/\t\r\n") != std::string::npos) {
         return {400, "application/json", "{\"error\":\"Enter a valid file name\"}"};
@@ -901,10 +1020,17 @@ Response apiRename(const std::string& id, const Request& req) {
 }
 
 Response apiOpen(const std::string& id, bool download) {
+    if (!isSafeFileId(id)) return {404, "application/json", "{\"error\":\"File not found\"}"};
     for (const auto& file : files) {
         if (file.id == id && !file.deleted) {
+            fs::path storedPath;
+            if (!resolveSafeChildPath(uploadDir, file.storedName, storedPath))
+                return {403, "application/json", "{\"error\":\"Invalid file path\"}"};
+            std::error_code error;
+            if (!fs::is_regular_file(storedPath, error))
+                return {404, "application/json", "{\"error\":\"File not found\"}"};
             std::string disposition = download ? "attachment" : "inline";
-            return {200, mimeFor(fs::path("file." + file.type)), readBinaryFile(uploadDir / file.storedName), {{"Content-Disposition", disposition + "; filename=\"" + jsonEscape(file.originalName) + "\""}}};
+            return {200, mimeFor(fs::path("file." + file.type)), readBinaryFile(storedPath), {{"Content-Disposition", disposition + "; filename=\"" + jsonEscape(file.originalName) + "\""}}};
         }
     }
     return {404, "application/json", "{\"error\":\"File not found\"}"};
@@ -940,7 +1066,9 @@ Response apiSearch(const Request& req, bool comparisonOnly = false) {
         if (f.deleted) continue;
         if (!typeSet.empty() && !typeSet.count(f.type)) continue;
         if (!idSet.empty() && !idSet.count(f.id)) continue;
-        std::string text = readBinaryFile(f.extractedPath);
+        fs::path extractedPath;
+        if (!resolveSafeChildPath(extractedDir, f.id + ".txt", extractedPath)) continue;
+        std::string text = readBinaryFile(extractedPath);
         ++searched;
         chars += text.size();
         MatchSet found;
@@ -1174,20 +1302,22 @@ void sendResponse(socket_t client, const Response& res) {
             << "Access-Control-Expose-Headers: Content-Disposition\r\n";
         for (const auto& [key, value] : res.headers) head << key << ": " << value << "\r\n";
         head << "Connection: close\r\n\r\n";
-        std::string payload = head.str() + res.body;
-        size_t sent = 0;
-        while (sent < payload.size()) {
+    std::string payload = head.str() + res.body;
+    size_t sent = 0;
+    while (sent < payload.size()) {
         size_t remaining = payload.size() - sent;
         int chunkSize = static_cast<int>(std::min(remaining, static_cast<size_t>(std::numeric_limits<int>::max())));
-    #ifdef __linux__
+#ifdef __linux__
         int count = send(client, payload.data() + sent, chunkSize, MSG_NOSIGNAL);
-    #else
+#else
         int count = send(client, payload.data() + sent, chunkSize, 0);
-    #endif
+#endif
         if (count <= 0) break;
         sent += static_cast<size_t>(count);
-        }
+    }
 }
+
+int main() {
     const char* envPort = std::getenv("PORT");
     int port = 8080;
     if (envPort) {
@@ -1202,10 +1332,9 @@ void sendResponse(socket_t client, const Response& res) {
             return 1;
         }
     }
-
-int main() {
     fs::create_directories(root / "workspaces");
     fs::create_directories(root / "data");
+    initializeStorage();
     loadUsers();
     loadSessions();
 #ifdef _WIN32

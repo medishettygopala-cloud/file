@@ -17,7 +17,7 @@ FileFind is a C++17 full-stack academic project for uploading documents, extract
 - File type filters and selected-file search
 - Match highlighting and surrounding context
 - Algorithm comparison with a small JavaScript chart
-- JSON metadata storage in `data/files.db`
+- Per-user JSON metadata and file storage under `FILE_STORAGE_PATH`
 
 ## Technology Stack
 
@@ -34,7 +34,7 @@ Browser
 C++ HTTP server
   -> upload validation
   -> text extraction
-  -> metadata storage
+  -> authenticated per-user persistent storage
   -> pattern matching algorithms
   -> JSON responses
 Frontend renders dashboard, files, search results, and comparison chart
@@ -53,9 +53,11 @@ frontend/
   index.html
   style.css
   script.js
-uploads/
-extracted_text/
-data/
+data/users/<user-id>/
+  files/
+  extracted_text/
+  data/files.db
+workspaces/ (legacy per-user migration source)
 samples/
 CMakeLists.txt
 ```
@@ -97,7 +99,7 @@ Always open the app through this address. Opening `frontend/index.html` directly
 
 ## Windows File Access and Packaging
 
-FileFind does not scan another person’s computer without consent. The user grants access by choosing files or a folder in the Windows File Explorer picker. The app receives only the selected supported documents and stores them in its local `uploads` folder.
+FileFind does not scan another person’s computer without consent. The user grants access by choosing files or a folder in the Windows File Explorer picker. The app receives only the selected supported documents and stores them in that authenticated user’s storage directory.
 
 To create a portable install directory after building:
 
@@ -118,7 +120,29 @@ Copy the generated `package` folder to another Windows computer. Run `FileFind.e
 
 The server listens on all network interfaces and uses the `PORT` environment variable, defaulting to `8080`. It never scans the computer automatically, and local open/show actions reject paths that were not selected through File Explorer. Native file/folder dialogs and Windows Explorer actions are unavailable on Linux cloud deployments; browser uploads and normal file operations remain available.
 
-Cloud hosts may use ephemeral storage by default. Configure a persistent disk for `data/` and `workspaces/` if uploaded files and account data must survive restarts or redeployments.
+Cloud hosts may use ephemeral storage by default. Set `FILE_STORAGE_PATH` to a mounted persistent disk to keep uploaded files and account data across restarts and redeployments.
+
+### Persistent User Storage
+
+FileFind selects the storage root from `FILE_STORAGE_PATH`. If the variable is unset, local development uses `data/users/` beneath the application directory. Each authenticated user is stored separately:
+
+```text
+data/users/<user-id>/files/
+data/users/<user-id>/extracted_text/
+data/users/<user-id>/data/files.db
+```
+
+The account and session databases (`users.db` and `sessions.db`) live at the storage root. The backend derives the user ID from the existing bearer-token session; workspace headers and request bodies cannot select another user's directory.
+
+For Render, create a persistent disk mounted at `/var/data` and set this service environment variable:
+
+```text
+FILE_STORAGE_PATH=/var/data/users
+```
+
+The resulting user files are stored under `/var/data/users/<user-id>/`. Do not put this path in source code or commit secrets. Without a mounted persistent disk, container-local files can be lost during restarts or redeploys.
+
+On startup, FileFind copies legacy `data/users.db`, `data/sessions.db`, and an authenticated user's existing `workspaces/u_<user-id>/` data into the selected storage root when the destination is missing. It does not delete the old data. Legacy files in an unauthenticated `workspaces/default/` cannot be safely assigned to an account, and data that was already lost with an ephemeral Render container cannot be recovered by this migration.
 
 ## API Documentation
 
