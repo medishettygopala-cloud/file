@@ -182,7 +182,6 @@ function renderFiles() {
         <button class="small" data-action="open" data-id="${file.id}">Preview</button>
         <button class="small" data-action="download" data-id="${file.id}">Download</button>
         <button class="small" data-action="rename" data-id="${file.id}">Rename</button>
-        <button class="small" data-action="share" data-id="${file.id}">Share</button>
         <button class="danger small" data-action="delete" data-id="${file.id}">Delete</button>
       </td>
     `;
@@ -204,21 +203,6 @@ async function renameFile(id) {
   });
   await refreshFiles();
   toast('File renamed.');
-}
-
-async function shareFile(id) {
-  const file = state.files.find(item => item.id === id);
-  const response = await fetch(workspaceUrl(`/api/files/${id}/download`), { headers: { ...authHeaders() } });
-  if (!response.ok) throw new Error('Could not prepare this file for sharing.');
-  const blob = await response.blob();
-  const sharedFile = new File([blob], file.originalName, { type: blob.type || 'application/octet-stream' });
-  if (navigator.canShare && navigator.canShare({ files: [sharedFile] })) {
-    await navigator.share({ title: file.originalName, files: [sharedFile] });
-    return;
-  }
-  const message = encodeURIComponent(`FileFind file: ${file.originalName}\nDownload it here: ${workspaceUrl(`/api/files/${id}/download`)}`);
-  window.open(`https://wa.me/?text=${message}`, '_blank', 'noopener');
-  toast('WhatsApp opened. Attach the downloaded file if needed.');
 }
 
 function renderUploadedPreview(uploaded, errors) {
@@ -523,7 +507,6 @@ function bindEvents() {
       if (action === 'open') window.open(workspaceUrl(`/api/files/${id}/open`), '_blank', 'noopener');
       if (action === 'download') window.location.href = workspaceUrl(`/api/files/${id}/download`);
       if (action === 'rename') await renameFile(id);
-      if (action === 'share') await shareFile(id);
       if (action === 'delete') {
         await api(`/api/files/${id}`, { method: 'DELETE' });
         toast('File deleted.');
