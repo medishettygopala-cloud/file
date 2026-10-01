@@ -2,7 +2,7 @@ const workspaceId = localStorage.getItem('filefind-workspace') || (crypto.random
 localStorage.setItem('filefind-workspace', workspaceId);
 const apiBase = '';
 const state = { files: [], local: { selected: false, path: '', type: '' }, user: null };
-let authToken = localStorage.getItem('filefind-auth-token') || '';
+let authToken = sessionStorage.getItem('filefind-auth-token') || '';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -99,7 +99,7 @@ async function api(path, options = {}) {
   try { data = text ? JSON.parse(text) : {}; } catch (error) { throw new Error('The server returned an invalid response.'); }
   if (res.status === 401) {
     authToken = '';
-    localStorage.removeItem('filefind-auth-token');
+    sessionStorage.removeItem('filefind-auth-token');
     showAuth();
     throw new Error(data.error || 'Please login to continue.');
   }
@@ -452,7 +452,7 @@ async function authRequest(path, email, password, errorNode) {
   try { data = text ? JSON.parse(text) : {}; } catch (e) { throw new Error('Invalid server response.'); }
   if (!res.ok) throw new Error(data.error || 'Authentication failed.');
   authToken = data.token;
-  localStorage.setItem('filefind-auth-token', authToken);
+  sessionStorage.setItem('filefind-auth-token', authToken);
   showApp(data.user);
   toast(`Welcome, ${data.user.email}`);
 }
@@ -466,7 +466,7 @@ async function checkSession() {
     showApp(data.user);
   } catch (e) {
     authToken = '';
-    localStorage.removeItem('filefind-auth-token');
+    sessionStorage.removeItem('filefind-auth-token');
     showAuth();
   }
 }
@@ -476,7 +476,7 @@ async function doLogout() {
     await fetch(`${apiBase}/api/auth/logout`, { method: 'POST', headers: { ...authHeaders() } });
   } catch (e) {}
   authToken = '';
-  localStorage.removeItem('filefind-auth-token');
+  sessionStorage.removeItem('filefind-auth-token');
   state.files = [];
   showAuth();
   toast('Logged out.');
