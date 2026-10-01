@@ -1,4 +1,4 @@
-build/
+build*/
 uploads/*
 extracted_text/*
 data/*

@@ -1,6 +1,6 @@
 const workspaceId = localStorage.getItem('filefind-workspace') || (crypto.randomUUID ? crypto.randomUUID() : `workspace-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 localStorage.setItem('filefind-workspace', workspaceId);
-const apiBase = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
+const apiBase = '';
 const state = { files: [], local: { selected: false, path: '', type: '' }, user: null };
 let authToken = localStorage.getItem('filefind-auth-token') || '';
 const $ = (selector) => document.querySelector(selector);
@@ -91,8 +91,8 @@ async function api(path, options = {}) {
     });
   } catch (error) {
     $('#connectionStatus').className = 'connection offline';
-    $('#connectionStatus').textContent = 'Server unavailable. Open FileFind at http://localhost:8080.';
-    throw new Error('Cannot reach the FileFind server. Start FileFind and open http://localhost:8080.');
+    $('#connectionStatus').textContent = 'FileFind server unavailable';
+    throw new Error('Cannot reach FileFind. Check that the server is running and reload this page.');
   }
   const text = await res.text();
   let data;
@@ -105,7 +105,7 @@ async function api(path, options = {}) {
   }
   if (!res.ok) throw new Error(data.error || 'Server error. Please try again.');
   $('#connectionStatus').className = 'connection online';
-  $('#connectionStatus').textContent = 'Local index connected';
+  $('#connectionStatus').textContent = 'FileFind server connected';
   return data;
 }
 
@@ -123,10 +123,10 @@ function uploadRequest(form) {
       try { data = request.responseText ? JSON.parse(request.responseText) : {}; } catch (error) { reject(new Error('The server returned an invalid response.')); return; }
       if (request.status < 200 || request.status >= 300) { reject(new Error(data.error || 'Server error. Please try again.')); return; }
       $('#connectionStatus').className = 'connection online';
-      $('#connectionStatus').textContent = 'Local index connected';
+      $('#connectionStatus').textContent = 'FileFind server connected';
       resolve(data);
     });
-    request.addEventListener('error', () => reject(new Error('Cannot reach the FileFind server. Start FileFind and open http://localhost:8080.')));
+    request.addEventListener('error', () => reject(new Error('Cannot reach FileFind. Check that the server is running and reload this page.')));
     request.addEventListener('abort', () => reject(new Error('Upload cancelled.')));
     request.send(form);
   });

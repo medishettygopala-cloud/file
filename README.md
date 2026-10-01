@@ -66,7 +66,7 @@ CMakeLists.txt
 - A C++17 compiler
   - Windows: MSVC Build Tools or MinGW
   - Linux/macOS: GCC or Clang
-- Optional for PDF: Poppler utilities, especially `pdftotext`
+- Linux runtime: `unzip` for DOCX/PPTX extraction; Poppler `pdftotext` is optional for higher-quality PDF extraction
 
 ## Build Instructions
 
@@ -116,7 +116,9 @@ Copy the generated `package` folder to another Windows computer. Run `FileFind.e
 - `POST /api/explorer/open-file` opens a selected result in its default Windows application.
 - `POST /api/explorer/show-in-explorer` highlights a selected result in File Explorer.
 
-The server listens on `127.0.0.1` only. It never scans the computer automatically, and local open/show actions reject paths that were not selected through File Explorer.
+The server listens on all network interfaces and uses the `PORT` environment variable, defaulting to `8080`. It never scans the computer automatically, and local open/show actions reject paths that were not selected through File Explorer. Native file/folder dialogs and Windows Explorer actions are unavailable on Linux cloud deployments; browser uploads and normal file operations remain available.
+
+Cloud hosts may use ephemeral storage by default. Configure a persistent disk for `data/` and `workspaces/` if uploaded files and account data must survive restarts or redeployments.
 
 ## API Documentation
 
@@ -146,7 +148,7 @@ Opens a stored file inline when the browser supports its format.
 
 ### `GET /api/files/{id}/download`
 
-Downloads the stored file using its current display name. The file table also provides native sharing where the browser supports it; otherwise it opens a WhatsApp handoff link.
+Downloads the stored file using its current display name.
 
 ### `POST /api/search`
 

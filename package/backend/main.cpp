@@ -5,16 +5,20 @@
 #include "search/SearchAlgorithms.h"
 #include "utils/Json.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <random>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -1170,9 +1174,34 @@ void sendResponse(socket_t client, const Response& res) {
             << "Access-Control-Expose-Headers: Content-Disposition\r\n";
         for (const auto& [key, value] : res.headers) head << key << ": " << value << "\r\n";
         head << "Connection: close\r\n\r\n";
-    std::string payload = head.str() + res.body;
-    send(client, payload.data(), static_cast<int>(payload.size()), 0);
+        std::string payload = head.str() + res.body;
+        size_t sent = 0;
+        while (sent < payload.size()) {
+        size_t remaining = payload.size() - sent;
+        int chunkSize = static_cast<int>(std::min(remaining, static_cast<size_t>(std::numeric_limits<int>::max())));
+    #ifdef __linux__
+        int count = send(client, payload.data() + sent, chunkSize, MSG_NOSIGNAL);
+    #else
+        int count = send(client, payload.data() + sent, chunkSize, 0);
+    #endif
+        if (count <= 0) break;
+        sent += static_cast<size_t>(count);
+        }
 }
+    const char* envPort = std::getenv("PORT");
+    int port = 8080;
+    if (envPort) {
+        try {
+            size_t parsed = 0;
+            port = std::stoi(envPort, &parsed);
+            if (parsed != std::string(envPort).size() || port < 1 || port > 65535) {
+                throw std::invalid_argument("PORT must be between 1 and 65535");
+            }
+        } catch (const std::exception&) {
+            std::cerr << "Invalid PORT value: " << envPort << " (expected 1-65535)\n";
+            return 1;
+        }
+    }
 
 int main() {
     fs::create_directories(root / "workspaces");
@@ -1190,16 +1219,16 @@ int main() {
     }
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(8080);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(static_cast<unsigned short>(port));
     int yes = 1;
     setsockopt(server, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
     if (bind(server, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR || listen(server, 16) == SOCKET_ERROR) {
-        std::cerr << "Port 8080 is unavailable\n";
+        std::cerr << "Port " << port << " is unavailable\n";
         closeSocket(server);
         return 1;
     }
-    std::cout << "FileFind running at http://localhost:8080\n";
+    std::cout << "FileFind listening on port " << port << " (local: http://localhost:" << port << ")\n";
     while (true) {
         socket_t client = accept(server, nullptr, nullptr);
         if (client == INVALID_SOCKET) continue;

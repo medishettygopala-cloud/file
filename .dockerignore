@@ -1,0 +1,15 @@
+build/
+.vscode/
+.git/
+.gitignore
+*.exe
+*.obj
+*.o
+package/
+workspaces/
+uploads/**
+!uploads/.gitkeep
+extracted_text/**
+!extracted_text/.gitkeep
+data/**
+!data/.gitkeep
